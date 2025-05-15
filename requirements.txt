@@ -15,4 +15,3 @@ torchvision
 tqdm
 traitlets
 wcwidth
-pickle5
