@@ -75,6 +75,8 @@ class Utils:
         refers: https://pytorch.org/tutorials/beginner/chatbot_tutorial.html
         '''
         inp = inp.squeeze(0)
+        # Convert mask to boolean tensor
+        mask = mask.bool()
         nTotal = mask.sum()
         crossEntropy = -torch.log(torch.gather(inp.squeeze(0), 1, target.view(-1, 1)).squeeze(1).float())
         loss = crossEntropy.masked_select(mask).mean()

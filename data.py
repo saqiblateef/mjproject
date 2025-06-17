@@ -43,7 +43,6 @@ def collate_fn(batch): # add support for motion and object features
 
     m = []
     for i, seq in enumerate(padVar):
-        #m.append([])
         tmp = []
         for token in seq:
             if token == 0:
@@ -88,16 +87,18 @@ class CustomDataset(Dataset):
         
         appearance_tensor = torch.tensor(self.appearance_feature_dict[self.v_name_list[idx]]).float()
         
-        if self.motion_feature_dict == None:
-            motion_tensor = torch.zeros_like(appearance_tensor)
-        else:
-             motion_tensor = torch.tensor(self.motion_feature_dict[self.v_name_list[idx]]).float()
-        if self.object_feature_dict == None:
-            object_tensor = torch.zeros_like(appearance_tensor)
-        else:
+        # Create zero tensors with same shape as appearance tensor for motion and object features
+        motion_tensor = torch.zeros_like(appearance_tensor)
+        object_tensor = torch.zeros_like(appearance_tensor)
+        
+        # Only try to get motion/object features if the dictionaries exist and have the key
+        if self.motion_feature_dict is not None and self.v_name_list[idx] in self.motion_feature_dict:
+            motion_tensor = torch.tensor(self.motion_feature_dict[self.v_name_list[idx]]).float()
+            
+        if self.object_feature_dict is not None and self.v_name_list[idx] in self.object_feature_dict:
             object_tensor = torch.tensor(self.object_feature_dict[self.v_name_list[idx]]).float()
             
-        return appearance_tensor,anno_index, self.v_name_list[idx],motion_tensor,object_tensor
+        return appearance_tensor, anno_index, self.v_name_list[idx], motion_tensor, object_tensor
             
 
 class DataHandler:
@@ -153,7 +154,7 @@ class DataHandler:
             
         if self.cfg.model_name == 'sa-lstm' or self.cfg.model_name == 'recnet':
             for key in f1.keys():
-                arr = f1[key].value
+                arr = np.array(f1[key])  # Modern h5py syntax
                 if arr.shape[0] < self.cfg.frame_len:
                     pad = self.cfg.frame_len - arr.shape[0]
                     arr = np.concatenate((arr,np.zeros((pad,arr.shape[1]))),axis = 0)
@@ -161,7 +162,7 @@ class DataHandler:
 
         if self.cfg.model_name == 'mean_pooling':
             for key in f1.keys():
-                feature_dict[key] = f1[key].value.mean(axis=0)
+                feature_dict[key] = np.array(f1[key]).mean(axis=0)  # Modern h5py syntax
                 
         return feature_dict
 
@@ -177,14 +178,6 @@ class DataHandler:
                 dic[l[0]].append(ll)
         return dic
     
-#     def _name_mapping(self,path):
-#         vid2url = dict()
-#         fil = open(path.name_mapping_file,'r+')
-#         for f in fil.readlines():
-#             l = f.split(' ')
-#             vid2url[l[1].strip('\n')] = l[0]
-#         return vid2url
-    
     def _msvd_create_dict(self):
         self.train_dict = self._file_to_dict(self.path.train_annotation_file)
         self.val_dict = self._file_to_dict(self.path.val_annotation_file)
@@ -198,50 +191,34 @@ class DataHandler:
         val_dict = {}
         test_dict = {}
         for datap in train_val_file['sentences']:
-            if int(datap['video_id'][5:]) in self.path.train_id_list:
-                if datap['video_id'] in list(train_dict.keys()):
-                    train_dict[datap['video_id']] += [datap['caption']]
-                else:
-                    train_dict[datap['video_id']] = [datap['caption']]
-            if int(datap['video_id'][5:]) in self.path.val_id_list:
-                if datap['video_id'] in list(val_dict.keys()):
-                    val_dict[datap['video_id']] += [datap['caption']]
-                else:
-                    val_dict[datap['video_id']] = [datap['caption']]
-            
-        for datap in test_file['sentences']:
-            if datap['video_id'] in list(test_dict.keys()):
-                test_dict[datap['video_id']] += [datap['caption']]
+            if datap['video_id'] not in train_dict:
+                train_dict[datap['video_id']] = [datap['caption']]
             else:
+                train_dict[datap['video_id']].append(datap['caption'])
+                
+        for datap in test_file['sentences']:
+            if datap['video_id'] not in test_dict:
                 test_dict[datap['video_id']] = [datap['caption']]
+            else:
+                test_dict[datap['video_id']].append(datap['caption'])
+                
         return train_dict,val_dict,test_dict
     
     def getDatasets(self):
         
-        if self.cfg.model_name =='marn':
-            train_dset = CustomDataset(self.cfg,self.appearance_feature_dict, self.train_dict, self.train_name_list, self.voc,
-                                      self.motion_feature_dict,self.object_feature_dict)
-            val_dset = CustomDataset(self.cfg,self.appearance_feature_dict, self.val_dict, self.val_name_list, self.voc,
-                                    self.motion_feature_dict,self.object_feature_dict)
-            test_dset = CustomDataset(self.cfg,self.appearance_feature_dict, self.test_dict, self.test_name_list, self.voc,
-                                     self.motion_feature_dict,self.object_feature_dict)
-            
-        if self.cfg.model_name == 'mean_pooling' or self.cfg.model_name == 'sa-lstm' or self.cfg.model_name == 'recnet':
-            train_dset = CustomDataset(self.cfg,self.appearance_feature_dict, self.train_dict, self.train_name_list, self.voc)
-            val_dset = CustomDataset(self.cfg,self.appearance_feature_dict, self.val_dict, self.val_name_list, self.voc)
-            test_dset = CustomDataset(self.cfg,self.appearance_feature_dict, self.test_dict, self.test_name_list, self.voc)
-            
-            
-        return train_dset, val_dset, test_dset
+        train_dset = CustomDataset(self.cfg,self.appearance_feature_dict,self.train_dict,self.train_name_list,self.voc,
+                                 self.motion_feature_dict,self.object_feature_dict)
+        val_dset = CustomDataset(self.cfg,self.appearance_feature_dict,self.val_dict,self.val_name_list,self.voc,
+                               self.motion_feature_dict,self.object_feature_dict)
+        test_dset = CustomDataset(self.cfg,self.appearance_feature_dict,self.test_dict,self.test_name_list,self.voc,
+                                self.motion_feature_dict,self.object_feature_dict)
+        
+        return train_dset,val_dset,test_dset
     
     def getDataloader(self,train_dset,val_dset,test_dset):
         
-        train_loader=DataLoader(train_dset,batch_size = self.cfg.batch_size, num_workers = 8,shuffle = True,
-                        collate_fn = collate_fn, drop_last=True)
-
-        val_loader = DataLoader(val_dset,batch_size = 10, num_workers = 8,shuffle = False,collate_fn = collate_fn,
-                         drop_last=False)
-        test_loader = DataLoader(test_dset,batch_size = 10, num_workers = 8,shuffle = False,collate_fn = collate_fn,
-                         drop_last=False)
+        train_loader = DataLoader(train_dset,batch_size=self.cfg.batch_size,shuffle=True,collate_fn=collate_fn)
+        val_loader = DataLoader(val_dset,batch_size=self.cfg.val_batch_size,shuffle=True,collate_fn=collate_fn)
+        test_loader = DataLoader(test_dset,batch_size=self.cfg.val_batch_size,shuffle=True,collate_fn=collate_fn)
         
         return train_loader,val_loader,test_loader

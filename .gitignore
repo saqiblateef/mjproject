@@ -1,0 +1,30 @@
+# Python virtual environment
+.env/
+__pycache__/
+*.pyc
+
+# IDE files
+.vscode/
+.idea/
+
+# Large data files
+*.hdf5
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Database files
+*.db
+
+# Model checkpoints
+Saved/*.pt
+
+# Compiled Python files
+*.pyc
+*.pyo
+*.pyd
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/ 
